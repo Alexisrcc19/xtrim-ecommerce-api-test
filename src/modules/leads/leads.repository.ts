@@ -48,10 +48,10 @@ export class LeadsRepository {
     return rows[0];
   }
 
-  async changeStatus(id: string, input: StatusInput): Promise<Lead | undefined> {
+  async changeStatus(id: string, input: StatusInput, currentStatus: LeadStatus): Promise<Lead | undefined> {
     return (await this.db.query<Lead>(`
-      UPDATE leads SET status = $2, outcome = $3, sale_amount = $4 WHERE id = $1 RETURNING ${columns}`,
-      [id, input.status, input.outcome, input.sale_amount])).rows[0];
+      UPDATE leads SET status = $2, outcome = $3, sale_amount = $4 WHERE id = $1 AND status = $5 RETURNING ${columns}`,
+      [id, input.status, input.outcome, input.sale_amount, currentStatus])).rows[0];
   }
 
   async delete(id: string): Promise<boolean> {

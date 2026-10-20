@@ -36,8 +36,17 @@ export class LeadsService {
 
   async changeStatus(id: string, body: unknown) {
     const input = statusInput(body);
-    const lead = await this.repository.changeStatus(uuid(id), input);
-    if (!lead) throw new HttpError(404, "LEAD_NOT_FOUND", "Lead no encontrado");
+    const current = await this.detail(id);
+    const allowed = (current.status === "NEW" && input.status === "IN_PROGRESS")
+      || (current.status === "IN_PROGRESS" && input.status === "CLOSED");
+    const conflict = () => new HttpError(409, "INVALID_STATUS_TRANSITION",
+      "La oportunidad solo puede avanzar de Nuevo a En gestión y después a Cerrado. Un cierre es definitivo. Actualice la vista.");
+    if (!allowed) throw conflict();
+    const lead = await this.repository.changeStatus(id, input, current.status);
+    if (!lead) {
+      await this.detail(id);
+      throw conflict();
+    }
     return lead;
   }
 

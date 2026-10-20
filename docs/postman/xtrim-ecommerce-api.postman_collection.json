@@ -41,7 +41,7 @@
       "key": "runOptional",
       "value": "false",
       "type": "string",
-      "description": "Cambiar a true para habilitar las operaciones opcionales, incluido borrado definitivo."
+      "description": "Cambiar a true para filtros, edición, intentos rechazados de modificar cierres y borrado definitivo."
     }
   ],
   "item": [
@@ -1264,8 +1264,8 @@
           ]
         },
         {
-          "name": "Opcionales · filtros, edición, LOST, reapertura y eliminación",
-          "description": "Se omite por defecto. Establezca runOptional=true para ejecutar. El borrado es definitivo y el cierre LOST/reapertura cambian las métricas. Si ejecuta toda la colección con esta opción, el dashboard final reflejará la eliminación, no el cierre WON.",
+          "name": "Opcionales · filtros, edición, cierres terminales y eliminación",
+          "description": "Se omite por defecto. Establezca runOptional=true para ejecutar. El borrado es definitivo; los intentos de cambiar un cierre o reabrirlo se rechazan con 409. Si ejecuta toda la colección con esta opción, el dashboard final reflejará la eliminación, no el cierre WON.",
           "item": [
             {
               "name": "Filtrar y buscar oportunidades",
@@ -1386,7 +1386,7 @@
               "response": []
             },
             {
-              "name": "Cerrar como LOST sin monto",
+              "name": "Intentar modificar cierre WON a LOST · 409",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -1410,7 +1410,7 @@
                   ]
                 },
                 "url": "{{baseUrl}}/leads/{{leadId}}/status",
-                "description": "Sustituye el cierre WON del lead seleccionado y lo excluye del KPI de ventas.",
+                "description": "CLOSED es terminal. Sobre el lead cerrado por el flujo principal, esta petición debe devolver 409 sin cambiar resultado ni métricas.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"LOST\"\n}",
@@ -1437,16 +1437,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
-                      "pm.test(\"Corresponde al lead creado\", () => {",
-                      "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
-                      "});",
-                      "pm.test(\"Estado y cierre coherentes\", () => {",
-                      "  const lead = pm.response.json().data;",
-                      "  pm.expect(lead.status).to.eql(\"CLOSED\");",
-                      "  pm.expect(lead.outcome).to.eql(\"LOST\");",
-                      "  pm.expect(lead.sale_amount).to.eql(null);",
-                      "});"
+                      "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                      "pm.test(\"Transición rechazada\", () => pm.expect(pm.response.json().error.code).to.eql(\"INVALID_STATUS_TRANSITION\"));"
                     ]
                   }
                 }
@@ -1454,7 +1446,7 @@
               "response": []
             },
             {
-              "name": "Reabrir como NEW",
+              "name": "Intentar reabrir cierre · 409",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -1478,7 +1470,7 @@
                   ]
                 },
                 "url": "{{baseUrl}}/leads/{{leadId}}/status",
-                "description": "Limpia outcome y sale_amount automáticamente.",
+                "description": "CLOSED es terminal. Sobre el lead cerrado por el flujo principal, esta petición debe devolver 409 sin cambiar resultado ni métricas.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"status\": \"NEW\"\n}",
@@ -1505,16 +1497,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
-                      "pm.test(\"Corresponde al lead creado\", () => {",
-                      "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
-                      "});",
-                      "pm.test(\"Estado y cierre coherentes\", () => {",
-                      "  const lead = pm.response.json().data;",
-                      "  pm.expect(lead.status).to.eql(\"NEW\");",
-                      "  pm.expect(lead.outcome).to.eql(null);",
-                      "  pm.expect(lead.sale_amount).to.eql(null);",
-                      "});"
+                      "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                      "pm.test(\"Transición rechazada\", () => pm.expect(pm.response.json().error.code).to.eql(\"INVALID_STATUS_TRANSITION\"));"
                     ]
                   }
                 }

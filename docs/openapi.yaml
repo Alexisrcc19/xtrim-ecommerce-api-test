@@ -9,7 +9,9 @@ paths:
   /leads/events:
     get:
       summary: Avisos SSE administrativos sin datos personales
-      description: Canal persistente. ready al conectar y leads-changed tras cada mutación exitosa. data contiene una revisión opaca. No reproduce eventos; resincronizar la vista al reconectar. Comentarios keep-alive cada 25 segundos, sin consultar PostgreSQL.
+      description: Canal persistente. ready al conectar y leads-changed tras cada mutación exitosa. data contiene
+        una revisión opaca. No reproduce eventos; resincronizar la vista al reconectar. Comentarios keep-alive cada
+        25 segundos, sin consultar PostgreSQL.
       security:
       - AdminBearer: []
       responses:
@@ -75,7 +77,8 @@ paths:
     post:
       summary: Registra una solicitud pública con estado NEW
       description: 10 intentos por IP cada 15 minutos, incluyendo solicitudes inválidas. Plan existente y activo
-        obligatorio. Respuesta sin nombre, teléfono ni provincia. Un teléfono solo puede tener una solicitud NEW o IN_PROGRESS, reconociendo formatos local y +593 como equivalentes.
+        obligatorio. Respuesta sin nombre, teléfono ni provincia. Un teléfono solo puede tener una solicitud NEW
+        o IN_PROGRESS, reconociendo formatos local y +593 como equivalentes.
       security: []
       requestBody:
         required: true
@@ -277,8 +280,10 @@ paths:
         format: uuid
     patch:
       summary: Cambia estado y cierre de forma atómica
-      description: Se permite cualquier transición entre los tres estados. Reabrir limpia resultado y monto. Cerrar
-        o volver a cerrar requiere enviar el cierre completo. Última actualización confirmada prevalece.
+      description: 'Flujo permitido: NEW → IN_PROGRESS → CLOSED. CLOSED es terminal: no admite reapertura, repetición
+        ni cambio de resultado o monto. El cierre exige WON con monto mensual válido o LOST sin monto. Transiciones
+        inválidas o solicitudes obsoletas devuelven 409 INVALID_STATUS_TRANSITION. La escritura comprueba atómicamente
+        el estado de origen.'
       security:
       - AdminBearer: []
       requestBody:
@@ -300,7 +305,7 @@ paths:
                   data:
                     $ref: '#/components/schemas/Lead'
         '409':
-          description: El teléfono ya tiene otra solicitud activa (ACTIVE_PHONE_EXISTS).
+          $ref: '#/components/responses/Error'
         '400':
           $ref: '#/components/responses/Error'
         '401':
