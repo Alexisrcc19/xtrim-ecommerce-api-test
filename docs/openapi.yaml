@@ -1,0 +1,100 @@
+openapi: 3.0.3
+info:
+  title: XTRIM Demo API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api/v1
+paths:
+  /plans:
+    get:
+      summary: Lista planes activos por precio y slug
+      responses:
+        '200':
+          description: Catálogo público
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '500':
+          $ref: '#/components/responses/Error'
+  /plans/{slug}:
+    get:
+      summary: Obtiene un plan activo
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+            maxLength: 120
+            pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+      responses:
+        '200':
+          description: Plan público
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+components:
+  responses:
+    Error:
+      description: Error controlado; code identifica INVALID_SLUG, PLAN_NOT_FOUND o INTERNAL_ERROR
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+  schemas:
+    Plan:
+      type: object
+      required: [id, name, slug, description, speed_mbps, monthly_price, is_active, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        speed_mbps:
+          type: integer
+          minimum: 1
+        monthly_price:
+          type: string
+          description: Precio mensual en USD como decimal exacto
+          example: '24.90'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
