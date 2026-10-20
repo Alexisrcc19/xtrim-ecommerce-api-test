@@ -1,0 +1,662 @@
+openapi: 3.0.3
+info:
+  title: XTRIM Demo API
+  version: 1.1.0
+  description: Demostración técnica. Catálogo y captación públicos; administración mediante token Bearer privado.
+servers:
+- url: http://localhost:4000/api/v1
+paths:
+  /leads/events:
+    get:
+      summary: Avisos SSE administrativos sin datos personales
+      description: Canal persistente. ready al conectar y leads-changed tras cada mutación exitosa. data contiene una revisión opaca. No reproduce eventos; resincronizar la vista al reconectar. Comentarios keep-alive cada 25 segundos, sin consultar PostgreSQL.
+      security:
+      - AdminBearer: []
+      responses:
+        '200':
+          description: Flujo de eventos
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /plans:
+    get:
+      summary: Lista planes activos por precio y slug
+      responses:
+        '200':
+          description: Catálogo público
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '500':
+          $ref: '#/components/responses/Error'
+  /plans/{slug}:
+    get:
+      summary: Obtiene un plan activo
+      parameters:
+      - in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+          maxLength: 120
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+      responses:
+        '200':
+          description: Plan público
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /leads:
+    post:
+      summary: Registra una solicitud pública con estado NEW
+      description: 10 intentos por IP cada 15 minutos, incluyendo solicitudes inválidas. Plan existente y activo
+        obligatorio. Respuesta sin nombre, teléfono ni provincia. Un teléfono solo puede tener una solicitud NEW o IN_PROGRESS, reconociendo formatos local y +593 como equivalentes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadInput'
+      responses:
+        '201':
+          description: Solicitud registrada
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LeadConfirmation'
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          description: Ya existe una solicitud activa con el teléfono (ACTIVE_PHONE_EXISTS).
+        '413':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    get:
+      summary: Lista leads para administración
+      security:
+      - AdminBearer: []
+      parameters:
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          default: 1
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - in: query
+        name: search
+        required: false
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description: Subcadena literal del nombre (sin distinguir mayúsculas) o teléfono; no interpreta comodines
+          SQL.
+      - in: query
+        name: status
+        required: false
+        schema:
+          $ref: '#/components/schemas/LeadStatus'
+      - in: query
+        name: province
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+        description: Provincia ecuatoriana; se normalizan tildes y mayúsculas.
+      responses:
+        '200':
+          description: Orden por created_at e id descendente
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - pagination
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Lead'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /leads/{id}:
+    parameters:
+    - in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: Consulta un lead
+      security:
+      - AdminBearer: []
+      responses:
+        '200':
+          description: Detalle del lead
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    patch:
+      summary: Edita datos del lead, sin cambiar estado, resultado ni monto
+      description: Solo los campos enviados. Un nuevo plan debe estar activo. No modifica el monto histórico de
+        un cierre.
+      security:
+      - AdminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadPatch'
+      responses:
+        '200':
+          description: Lead actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Lead'
+        '409':
+          description: El teléfono ya tiene otra solicitud activa (ACTIVE_PHONE_EXISTS).
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+    delete:
+      summary: Elimina permanentemente un lead
+      description: 'Borrado físico: elimina la oportunidad del listado y de los indicadores. Sin papelera ni auditoría
+        en esta prueba técnica.'
+      security:
+      - AdminBearer: []
+      responses:
+        '204':
+          description: Lead eliminado; sin cuerpo
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /leads/{id}/status:
+    parameters:
+    - in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+    patch:
+      summary: Cambia estado y cierre de forma atómica
+      description: Se permite cualquier transición entre los tres estados. Reabrir limpia resultado y monto. Cerrar
+        o volver a cerrar requiere enviar el cierre completo. Última actualización confirmada prevalece.
+      security:
+      - AdminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusChange'
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Lead'
+        '409':
+          description: El teléfono ya tiene otra solicitud activa (ACTIVE_PHONE_EXISTS).
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+  /dashboard/metrics:
+    get:
+      summary: Indicadores comerciales de todos los leads actuales
+      description: Suma solo montos mensuales históricos de cierres WON en USD. No representa ingresos cobrados.
+        Sin filtros temporales.
+      security:
+      - AdminBearer: []
+      responses:
+        '200':
+          description: Métricas en un único snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Metrics'
+        '401':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+components:
+  responses:
+    Error:
+      description: 'Error controlado: VALIDATION_ERROR/INVALID_JSON (400), UNAUTHORIZED (401), LEAD_NOT_FOUND/PLAN_NOT_FOUND/NOT_FOUND
+        (404), BODY_TOO_LARGE (413), PLAN_UNAVAILABLE (422), RATE_LIMITED (429), INTERNAL_ERROR (500), ADMIN_UNAVAILABLE
+        (503). 401 incluye WWW-Authenticate: Bearer; 429 incluye Retry-After en segundos.'
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - error
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+  schemas:
+    Plan:
+      type: object
+      required:
+      - id
+      - name
+      - slug
+      - description
+      - speed_mbps
+      - monthly_price
+      - is_active
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        speed_mbps:
+          type: integer
+          minimum: 1
+        monthly_price:
+          type: string
+          description: Precio mensual en USD como decimal exacto
+          example: '24.90'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    LeadStatus:
+      type: string
+      enum:
+      - NEW
+      - IN_PROGRESS
+      - CLOSED
+    LeadInput:
+      type: object
+      additionalProperties: false
+      required:
+      - full_name
+      - phone
+      - province
+      - plan_id
+      properties:
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 150
+          description: Nombre con letras Unicode, espacios, puntos, apóstrofes o guiones; se recortan y colapsan
+            espacios.
+          example: Persona Demo
+        phone:
+          type: string
+          maxLength: 30
+          description: Fijo/móvil ecuatoriano local o +593; se eliminan espacios, paréntesis y guiones.
+          example: 0991234567
+        province:
+          type: string
+          maxLength: 100
+          description: Una de las 24 provincias ecuatorianas. Se normaliza al nombre oficial con tildes.
+          example: Pichincha
+        plan_id:
+          type: string
+          format: uuid
+    LeadPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 150
+          description: Nombre con letras Unicode, espacios, puntos, apóstrofes o guiones; se recortan y colapsan
+            espacios.
+          example: Persona Demo
+        phone:
+          type: string
+          maxLength: 30
+          description: Fijo/móvil ecuatoriano local o +593; se eliminan espacios, paréntesis y guiones.
+          example: 0991234567
+        province:
+          type: string
+          maxLength: 100
+          description: Una de las 24 provincias ecuatorianas. Se normaliza al nombre oficial con tildes.
+          example: Pichincha
+        plan_id:
+          type: string
+          format: uuid
+    LeadConfirmation:
+      type: object
+      required:
+      - id
+      - status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - NEW
+        created_at:
+          type: string
+          format: date-time
+    Lead:
+      type: object
+      required:
+      - id
+      - full_name
+      - phone
+      - province
+      - plan_id
+      - status
+      - outcome
+      - sale_amount
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 150
+          description: Nombre con letras Unicode, espacios, puntos, apóstrofes o guiones; se recortan y colapsan
+            espacios.
+          example: Persona Demo
+        phone:
+          type: string
+          maxLength: 30
+          description: Fijo/móvil ecuatoriano local o +593; se eliminan espacios, paréntesis y guiones.
+          example: 0991234567
+        province:
+          type: string
+          maxLength: 100
+          description: Una de las 24 provincias ecuatorianas. Se normaliza al nombre oficial con tildes.
+          example: Pichincha
+        plan_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        outcome:
+          type: string
+          nullable: true
+          enum:
+          - WON
+          - LOST
+          - null
+        sale_amount:
+          type: string
+          nullable: true
+          description: Decimal histórico en USD, o null.
+          example: '31.25'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    StatusChange:
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required:
+        - status
+        properties:
+          status:
+            type: string
+            enum:
+            - NEW
+            - IN_PROGRESS
+          outcome:
+            type: string
+            nullable: true
+            enum:
+            - null
+          sale_amount:
+            type: string
+            nullable: true
+            enum:
+            - null
+      - type: object
+        additionalProperties: false
+        required:
+        - status
+        - outcome
+        properties:
+          status:
+            type: string
+            enum:
+            - CLOSED
+          outcome:
+            type: string
+            enum:
+            - LOST
+          sale_amount:
+            type: string
+            nullable: true
+            enum:
+            - null
+      - type: object
+        additionalProperties: false
+        required:
+        - status
+        - outcome
+        - sale_amount
+        properties:
+          status:
+            type: string
+            enum:
+            - CLOSED
+          outcome:
+            type: string
+            enum:
+            - WON
+          sale_amount:
+            type: string
+            pattern: ^(0|[1-9][0-9]{0,7})(\.[0-9]{1,2})?$
+            example: '31.25'
+            description: USD mensual no negativo; máximo 99999999.99. Cero permitido. No admite números JSON ni
+              notación exponencial.
+    Pagination:
+      type: object
+      required:
+      - page
+      - limit
+      - total
+      - total_pages
+      properties:
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+    Metrics:
+      type: object
+      required:
+      - total_leads
+      - leads_by_status
+      - won_sales
+      - monthly_sales_usd
+      - currency
+      properties:
+        total_leads:
+          type: integer
+          minimum: 0
+        leads_by_status:
+          type: object
+          required:
+          - NEW
+          - IN_PROGRESS
+          - CLOSED
+          properties:
+            NEW:
+              type: integer
+              minimum: 0
+            IN_PROGRESS:
+              type: integer
+              minimum: 0
+            CLOSED:
+              type: integer
+              minimum: 0
+        won_sales:
+          type: integer
+          minimum: 0
+        monthly_sales_usd:
+          type: string
+          description: Valor mensual vendido de cierres ganados, como decimal exacto.
+          example: '62.50'
+        currency:
+          type: string
+          enum:
+          - USD
+  securitySchemes:
+    AdminBearer:
+      type: http
+      scheme: bearer
+      description: Token aleatorio privado configurado en ADMIN_API_TOKEN. Solo HTTPS en producción. No distribuirlo
+        en código del navegador.
