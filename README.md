@@ -1,20 +1,34 @@
-# XTRIM API — demostración técnica
+# XTRIM Ecommerce API
 
-API Express 5 + TypeScript + PostgreSQL (`pg`). Incluye catálogo público, captación de leads, gestión comercial protegida e indicadores reales. Planes y precios ficticios; no es el sitio oficial.
+API REST para consultar planes de internet, registrar solicitudes de contratación y administrar oportunidades comerciales. Incluye indicadores de ventas y avisos de cambios en tiempo real.
 
-## Instalación y configuración
+Desarrollada con Node.js, Express 5, TypeScript y PostgreSQL mediante `pg`. Los planes y precios son ficticios: este proyecto es una demostración técnica y no corresponde al sitio oficial de XTRIM.
 
-Requiere Node.js 24, pnpm y PostgreSQL 14 o superior (compatible con Neon).
+## Instalación
+
+Requisitos: Node.js 24, pnpm y PostgreSQL 14 o superior. Compatible con Neon.
 
 ```sh
 pnpm install
 ```
 
-Configure en su entorno `DATABASE_URL`, `PORT` (4000 por defecto) y `FRONTEND_URL` (http://localhost:3000 por defecto). Se admite un `.env` local mediante dotenv; no versionarlo. Consulte `.env.example`. Para Neon use la URL provista por Neon con TLS (`sslmode=require`); no se desactiva la validación de certificados. La versión instalada de pg avisa que `sslmode=require` cambiará de semántica en una versión mayor; `sslmode=verify-full` hace explícita la verificación completa del certificado y hostname. No coloque la URL en el frontend.
+Configure las variables del entorno tomando como referencia [`.env.example`](.env.example):
 
-## Migraciones y seed
+| Variable | Descripción |
+| --- | --- |
+| `DATABASE_URL` | Conexión privada a PostgreSQL. Para Neon, use TLS con `sslmode=verify-full`. |
+| `PORT` | Puerto de la API. Predeterminado: `4000`. |
+| `FRONTEND_URL` | Origen permitido por CORS. Predeterminado: `http://localhost:3000`. |
+| `ADMIN_API_TOKEN` | Token administrativo privado de 32 a 512 caracteres, sin espacios. |
+| `TRUST_PROXY_HOPS` | Número de proxies de confianza, entre 0 y 5. Predeterminado: `0`. |
 
-Desde la raíz del repositorio, con `DATABASE_URL` configurada:
+Las variables pueden configurarse en un archivo `.env` local o en el entorno del servidor. Las credenciales quedan exclusivamente en el backend y no se incluyen en Git ni en el código del navegador. El token puede generarse con `openssl rand -hex 32`.
+
+`TRUST_PROXY_HOPS=0` ignora `X-Forwarded-For`. Otro valor requiere que todas las conexiones atraviesen ese número de proxies y que la API no permita acceso directo.
+
+## Base de datos y ejecución
+
+Desde la raíz del proyecto:
 
 ```sh
 pnpm db:migrate
@@ -22,53 +36,52 @@ pnpm db:seed
 pnpm dev
 ```
 
-`database/migrations/001_initial.sql` crea `plans` y `leads`. Cada ejecución aplica únicamente migraciones pendientes, registra SHA-256 en `schema_migrations` y rechaza archivos aplicados que hayan cambiado. Transacción y bloqueo asesor serializan ejecuciones. No hay borrado ni reset automático. Ante tablas preexistentes incompatibles, la ejecución falla y revierte: revise el esquema antes de continuar; no borre datos. Para evolucionar el esquema agregue otro archivo SQL numerado.
-
-El seed puede repetirse: inserta tres planes y omite slugs existentes, preservando sus precios y cambios. Ejecute migraciones antes del seed. Los comandos usan tsx y los archivos SQL del repositorio, incluso si la API se ejecuta compilada.
-
-## Endpoints y contrato
+La API se inicia en `http://localhost:4000`. Para ejecutar la versión compilada:
 
 ```sh
-curl -i http://localhost:4000/api/v1/plans
-curl -i http://localhost:4000/api/v1/plans/internet-esencial
-curl -i http://localhost:4000/api/v1/plans/no-existe
-```
-
-Listado: `200 {"data":[...]}`. Detalle: `200 {"data":{...}}`. Ambos muestran únicamente planes activos, ordenados por precio y slug en el listado. Los campos son `id`, `name`, `slug`, `description`, `speed_mbps`, `monthly_price`, `is_active`, `created_at`, `updated_at`. El precio se serializa como cadena decimal (p. ej. `"24.90"`) en USD para preservar precisión; fechas ISO 8601 y UUID como identificador. El frontend debe respetar este contrato. Sin plan activo: 404 `PLAN_NOT_FOUND`; slug inválido: 400 `INVALID_SLUG`; errores internos: 500 `INTERNAL_ERROR`. Forma común: `{"error":{"code":"...","message":"..."}}`. Salud: `GET /api/v1/health` (liveness; no comprueba BD en cada solicitud).
-
-Contrato OpenAPI: `docs/openapi.yaml`.
-
-## Integridad de leads
-
-`plan_id` es obligatorio y FK con eliminación restringida. Estados: `NEW`, `IN_PROGRESS`, `CLOSED`. Un lead abierto no puede tener resultado ni monto. Un cierre exige `WON` o `LOST`: ganado requiere monto USD no negativo; perdido no admite monto. Se permite cero para ofertas gratuitas. `sale_amount` guarda el valor mensual acordado históricamente; el KPI suma solo cierres ganados, no ingresos cobrados ni el precio actual del catálogo. Las fechas se mantienen mediante triggers. Teléfono normalizado ecuatoriano fijo/móvil, local o con prefijo +593. La API valida nombre, teléfono, las 24 provincias ecuatorianas, UUID, campos permitidos y coherencia del cierre. Normaliza espacios del nombre, formato del teléfono y tildes/mayúsculas de provincia. No verifica la titularidad ni la existencia real de una línea telefónica.
-
-## Comprobaciones
-
-```sh
-pnpm typecheck
 pnpm build
-pnpm test
-DATABASE_TESTS=1 pnpm test
 pnpm start
 ```
 
-Las pruebas PostgreSQL requieren migraciones aplicadas y usan transacciones revertidas para sus datos temporales. Preferir una base de pruebas; no ejecutarla concurrentemente en la misma base. Sin `DATABASE_TESTS=1` se omiten explícitamente las dos pruebas de integración. Las pruebas HTTP aisladas verifican errores y parametrización; no sustituyen la prueba persistente. No existe configuración de lint en esta etapa. El arranque verifica la conexión y SIGINT/SIGTERM cierran HTTP y pool. No se registran URLs, SQL ni datos personales en errores.
+Las migraciones de `database/migrations/` crean las tablas `plans` y `leads`, sus restricciones e índices. Cada archivo se registra con su checksum en `schema_migrations` y se aplica una sola vez. Las ejecuciones usan transacciones y un bloqueo para evitar aplicar migraciones simultáneamente.
 
-## Captación pública y CRM
+El seed carga tres planes sin duplicar slugs ni sobrescribir planes existentes. Los scripts de base de datos necesitan los archivos SQL y las dependencias de desarrollo del repositorio.
 
-No se requieren nuevas migraciones: se conservan las restricciones de `001_initial.sql`. El servidor real registra todos los módulos; las pruebas pueden construir la aplicación con repositorios aislados.
+La migración `002_unique_active_phone.sql` impide teléfonos duplicados entre leads abiertos. Si existen duplicados anteriores, la migración se revierte sin modificar esos registros; es necesario resolverlos antes de repetirla.
 
-| Método | Ruta bajo `/api/v1` | Acceso / respuesta |
-| --- | --- | --- |
-| POST | `/leads` | Público; 201 con `data: {id, status, created_at}` |
-| GET | `/leads` | Administrador; `data` y `pagination` |
-| GET | `/leads/:id` | Administrador; detalle en `data` |
-| PATCH | `/leads/:id` | Administrador; edición parcial de datos |
-| PATCH | `/leads/:id/status` | Administrador; cambio de estado/cierre |
-| DELETE | `/leads/:id` | Administrador; 204 sin cuerpo |
-| GET | `/dashboard/metrics` | Administrador; métricas en `data` |
+El arranque comprueba la conexión a PostgreSQL. Las señales SIGINT y SIGTERM cierran el servidor, las conexiones de eventos y el pool de base de datos.
 
-Ejemplo de captación con un UUID obtenido del catálogo (sustituya `PLAN_ID`):
+## Endpoints
+
+Todas las rutas usan el prefijo `/api/v1`.
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| GET | `/health` | Público | Estado del proceso de la API. |
+| GET | `/plans` | Público | Catálogo de planes activos. |
+| GET | `/plans/:slug` | Público | Detalle de un plan activo. |
+| POST | `/leads` | Público | Registro de una solicitud. |
+| GET | `/leads` | Administrador | Listado con búsqueda, filtros y paginación. |
+| GET | `/leads/events` | Administrador | Avisos de cambios mediante SSE. |
+| GET | `/leads/:id` | Administrador | Detalle de una oportunidad. |
+| PATCH | `/leads/:id` | Administrador | Edición de sus datos de contacto y plan. |
+| PATCH | `/leads/:id/status` | Administrador | Cambio de estado y resultado comercial. |
+| DELETE | `/leads/:id` | Administrador | Eliminación definitiva. |
+| GET | `/dashboard/metrics` | Administrador | Indicadores comerciales. |
+
+El contrato completo está en [OpenAPI](docs/openapi.yaml). Las respuestas usan `data`; el listado de leads incluye además `pagination`. Los importes en USD se devuelven como cadenas decimales y las fechas en formato ISO 8601. Los errores tienen la forma `{"error":{"code":"...","message":"..."}}`.
+
+```sh
+curl http://localhost:4000/api/v1/health
+curl http://localhost:4000/api/v1/plans
+curl http://localhost:4000/api/v1/plans/internet-esencial
+```
+
+`/health` indica que el proceso responde; no consulta la base de datos en cada solicitud.
+
+## Solicitudes de contratación
+
+El registro público requiere nombre, teléfono ecuatoriano, provincia e identificador de un plan activo. Ejemplo, sustituyendo `PLAN_ID` por un UUID del catálogo:
 
 ```sh
 curl -i http://localhost:4000/api/v1/leads \
@@ -76,11 +89,40 @@ curl -i http://localhost:4000/api/v1/leads \
   --data '{"full_name":"Persona Demo","phone":"0991234567","province":"Pichincha","plan_id":"PLAN_ID"}'
 ```
 
-Solo se aceptan esos cuatro campos; el servidor asigna `NEW`. No devuelve nombre, teléfono ni provincia en la confirmación pública. Nombre de 2–150 caracteres; teléfono fijo o móvil ecuatoriano local o +593; provincia válida; UUID y plan activo obligatorios. Campos adicionales, tipos inválidos y entradas incompletas devuelven 400 `VALIDATION_ERROR`. Un plan inexistente o inactivo devuelve 422 `PLAN_UNAVAILABLE` sin crear el lead. La selección del plan se bloquea durante la escritura para coordinar actualizaciones concurrentes del catálogo.
+Una solicitud válida devuelve HTTP 201 con `id`, `status: "NEW"` y `created_at`. La confirmación pública no devuelve datos de contacto.
 
-Listado: parámetros `page` (1 por defecto, máximo 1000000), `limit` (20 por defecto, máximo 100), `search` (subcadena literal del nombre o teléfono, hasta 100 caracteres), `status` y `province`. Orden descendente por fecha e id. Respuesta `pagination: {page, limit, total, total_pages}`; una página vacía conserva el total filtrado. Parámetros desconocidos o repetidos se rechazan. Las respuestas administrativas contienen datos personales y usan `Cache-Control: no-store`.
+La API valida el nombre, el formato ecuatoriano de teléfono, las 24 provincias y el UUID del plan. Normaliza espacios, formato telefónico y nombre de provincia. Un plan inexistente o inactivo devuelve HTTP 422 (`PLAN_UNAVAILABLE`).
 
-Edición: solo `full_name`, `phone`, `province`, `plan_id`, al menos uno; no admite null. Un cambio de plan exige que esté activo y no modifica el monto histórico. Los campos comerciales solo se cambian mediante `/status`:
+Un teléfono solo puede tener una solicitud en `NEW` o `IN_PROGRESS`. Los formatos local y `+593` se consideran equivalentes. Un duplicado devuelve HTTP 409 (`ACTIVE_PHONE_EXISTS`), también al editar o reabrir una oportunidad. Una solicitud cerrada permite registrar otra con el mismo teléfono.
+
+La captación admite 10 intentos por IP cada 15 minutos, incluidos los intentos inválidos. Al superar el límite responde HTTP 429 con `Retry-After`. El cuerpo máximo es de 100 KB; un tamaño superior devuelve 413 y un JSON malformado devuelve 400. Los contadores son locales a cada proceso, se reinician con la API y admiten hasta 10000 IP activas; al alcanzar esa capacidad, nuevas IP reciben 429 hasta liberar entradas.
+
+## Administración comercial
+
+Las solicitudes administrativas requieren `Authorization: Bearer <token>`. El token corresponde a `ADMIN_API_TOKEN` y se compara mediante hashes y comparación de tiempo constante. Las respuestas administrativas usan `Cache-Control: no-store`.
+
+```sh
+curl 'http://localhost:4000/api/v1/leads?page=1&limit=20' \
+  -H "Authorization: Bearer ${ADMIN_API_TOKEN}"
+```
+
+Sin credenciales válidas, la API responde 401. Si el token del servidor no está configurado correctamente, las rutas administrativas responden 503; el catálogo y la captación permanecen disponibles. La autenticación utiliza un token compartido, sin cuentas ni sesiones individuales. En producción, las conexiones usan HTTPS y el token permanece en el servidor que integra el CRM.
+
+El listado acepta `page`, `limit`, `search`, `status` y `province`. Los valores predeterminados son página 1 y 20 resultados; el máximo es 100 por página. La búsqueda coincide con partes del nombre o teléfono. El orden es descendente por fecha de creación e identificador.
+
+La edición acepta `full_name`, `phone`, `province` y `plan_id`. Los estados son:
+
+| Estado | Significado |
+| --- | --- |
+| `NEW` | Solicitud nueva. |
+| `IN_PROGRESS` | Oportunidad en gestión. |
+| `CLOSED` | Oportunidad cerrada, ganada o perdida. |
+
+Ejemplos de cuerpo para `PATCH /leads/:id/status`:
+
+```json
+{"status":"IN_PROGRESS"}
+```
 
 ```json
 {"status":"CLOSED","outcome":"WON","sale_amount":"31.25"}
@@ -90,41 +132,61 @@ Edición: solo `full_name`, `phone`, `province`, `plan_id`, al menos uno; no adm
 {"status":"CLOSED","outcome":"LOST"}
 ```
 
-```json
-{"status":"IN_PROGRESS"}
-```
+Un cierre ganado requiere un monto mensual no negativo, como cadena decimal, hasta `99999999.99`. Un cierre perdido no admite monto. Al reabrir una oportunidad se eliminan el resultado y el monto del cierre. Cambiar el plan no altera el monto histórico de una venta.
 
-Se permite cualquier transición entre los tres estados, incluyendo reapertura. Al reabrir se limpian `outcome` y `sale_amount`; enviarlos con valores no nulos se rechaza. Para cerrar o corregir un cierre debe enviarse el resultado completo. `sale_amount` es una cadena decimal de 0 a 99999999.99 con hasta dos decimales; cero es válido. No se aceptan números JSON, negativos, NaN, exponentes ni redondeo implícito. Cada cambio actualiza conjuntamente los tres campos. Ante ediciones concurrentes prevalece la última escritura confirmada; no hay versionado optimista ni historial en esta etapa.
+La eliminación es física y retira la oportunidad de los listados y métricas. Las actualizaciones concurrentes conservan la última escritura confirmada; no hay historial de cambios.
 
-El borrado es físico y definitivo: retira el lead de listas y métricas, incluyendo ventas ganadas. El frontend deberá solicitar confirmación al operador. UUID inválido: 400; lead inexistente: 404 `LEAD_NOT_FOUND`.
+## Indicadores de ventas
 
-## Autenticación administrativa
+`GET /api/v1/dashboard/metrics` devuelve:
 
-Variable nueva `ADMIN_API_TOKEN`: token privado aleatorio de 32 a 512 caracteres sin espacios. Genérelo fuera del código (por ejemplo, `openssl rand -hex 32`) y configúrelo en el entorno del backend. No hay valor de demostración ni credencial predeterminada. No es necesario modificar `.env` para arrancar si se suministra mediante variables del proceso o del hosting.
+- `total_leads`: total de oportunidades.
+- `leads_by_status`: cantidad en cada uno de los tres estados.
+- `won_sales`: cantidad de oportunidades cerradas y ganadas.
+- `monthly_sales_usd`: suma de sus montos mensuales históricos.
+- `currency`: `USD`.
 
-Cada solicitud administrativa requiere `Authorization: Bearer <token>`. El servidor compara hashes SHA-256 de longitud fija mediante `timingSafeEqual`. Sin token, con formato inválido o token incorrecto responde 401 y `WWW-Authenticate: Bearer`. Si la configuración falta o es inválida, bloquea administración con 503 `ADMIN_UNAVAILABLE`; el catálogo y la captación continúan públicos. Reinicie el proceso para aplicar una rotación del token.
+El indicador mide valor mensual vendido, no dinero cobrado. Los cierres perdidos y las oportunidades abiertas no aportan ventas. Reabrir, cambiar el resultado o eliminar una oportunidad modifica las métricas actuales; cambiar el precio del catálogo no modifica sus montos históricos.
 
-Ejemplo usando una variable privada ya configurada en la terminal:
+## Avisos en tiempo real
+
+`GET /api/v1/leads/events` abre un flujo SSE autenticado con el mismo token administrativo. Envía `ready` al conectar y `leads-changed` después de registrar, editar, cambiar de estado o eliminar un lead. Los eventos contienen una revisión opaca, sin datos personales. Cada 25 segundos se envía un comentario para mantener la conexión.
+
+El flujo comunica cambios; los datos se consultan mediante los endpoints del CRM. No conserva historial ni garantiza la entrega de eventos. Admite hasta 100 suscriptores por proceso y cierra conexiones lentas para limitar el uso de memoria.
+
+Las notificaciones se comparten dentro de una instancia de la API. Las escrituras directas en SQL no generan avisos. Los proxies que sirven este endpoint necesitan streaming sin buffering y un timeout de lectura superior a 25 segundos.
+
+## Pruebas
 
 ```sh
-curl -i http://localhost:4000/api/v1/leads?page=1 \
-  -H "Authorization: Bearer ${ADMIN_API_TOKEN}"
-curl -i http://localhost:4000/api/v1/dashboard/metrics \
-  -H "Authorization: Bearer ${ADMIN_API_TOKEN}"
+pnpm typecheck
+pnpm build
+pnpm test
 ```
 
-Este mecanismo identifica a un administrador compartido y es adecuado para la API de esta prueba técnica. Requiere HTTPS en producción. No incluye cuentas, sesiones, revocación individual ni auditoría. El futuro frontend deberá conservar el token en su servidor y actuar como intermediario autenticado para el CRM; no incluirlo en `NEXT_PUBLIC_*`, JavaScript distribuido, almacenamiento del navegador ni repositorio. CORS permite únicamente `FRONTEND_URL`; no reemplaza la autenticación.
+Para incluir las pruebas de integración con PostgreSQL, con las migraciones aplicadas:
 
-## Protección de captación
+```sh
+DATABASE_TESTS=1 pnpm test
+```
 
-Límite fijo de **10 intentos por IP cada 15 minutos**, incluyendo errores de JSON/validación. Al excederlo devuelve 429 `RATE_LIMITED` y `Retry-After` en segundos. Cuerpo máximo de 100 KB (413 `BODY_TOO_LARGE`); JSON inválido: 400 `INVALID_JSON`. Contadores locales, máximo 10000 IP activas y limpieza periódica al recibir solicitudes. Al alcanzar ese máximo, nuevas IP reciben 429 hasta que se liberen entradas.
+Las pruebas cubren catálogo, captación, validaciones, autenticación, gestión comercial, restricciones de teléfonos, eventos y métricas. Las pruebas de integración usan transacciones que revierten sus registros temporales. Sin `DATABASE_TESTS=1`, las pruebas que requieren PostgreSQL se omiten.
 
-Variable opcional nueva `TRUST_PROXY_HOPS`: entero entre 0 y 5, por defecto 0 (no confía en `X-Forwarded-For`). Configúrela solo conociendo la topología real del hosting: todas las rutas de acceso deben atravesar exactamente esos proxies y el servidor no debe admitir acceso directo. Una configuración incorrecta permite falsificar IP o agrupa clientes detrás de un proxy. No se activa confianza global automáticamente.
+## Postman
 
-Limitaciones: los contadores se reinician al reiniciar la API y no se comparten entre réplicas; usuarios tras NAT comparten cuota. Es protección básica, sin CAPTCHA, verificación telefónica ni deduplicación. A mayor escala, evaluar límites compartidos o en el proxy según evidencia de abuso.
+Importe [la colección v2.1](docs/postman/xtrim-ecommerce-api.postman_collection.json) con **Import → Files** en Postman y configure sus variables:
 
-## Indicadores comerciales
+| Variable | Uso |
+| --- | --- |
+| `baseUrl` | URL de la API con `/api/v1`, sin barra final. Predeterminado: `http://localhost:4000/api/v1`. |
+| `adminToken` | Token administrativo, configurado solo en un entorno privado o valor local de Postman. |
+| `planId` | Identificador capturado desde el listado de planes. |
+| `leadId` | Identificador capturado al crear una solicitud. |
+| `planSlug` | Slug capturado para consultar el detalle del plan. |
+| `runOptional` | `false` por defecto; habilita las acciones opcionales al cambiarlo a `true`. |
 
-`GET /api/v1/dashboard/metrics` devuelve `total_leads`, `leads_by_status` (siempre NEW, IN_PROGRESS y CLOSED), `won_sales`, `monthly_sales_usd` (cadena decimal) y `currency: "USD"`. Consulta todos los leads actuales en un único snapshot. Solo suma `sale_amount` de `CLOSED` + `WON`. Cierres perdidos y abiertos no aportan ventas; cambios de precio de planes no alteran el monto histórico. Reabrir, cambiar resultado o borrar un lead modifica las métricas actuales. El indicador representa **valor mensual vendido**, no dinero efectivamente cobrado ni un historial de ingresos.
+Ejecute las peticiones numeradas `00` a `08` en orden: salud, catálogo, detalle, captación, consulta del CRM, gestión, cierre ganado y métricas. Los scripts comprueban los códigos HTTP y capturan los identificadores automáticamente. Las variables de entorno o globales con los mismos nombres pueden ocultar los identificadores de la colección.
 
-Las pruebas cubren validaciones, normalización, autenticación en todas las rutas, configuración ausente, límites, JSON/tamaño y el recorrido HTTP contra PostgreSQL: crear → listar/filtrar/paginar → consultar → editar → cerrar ganado/perdido → reabrir → eliminar → verificar indicadores. Los datos temporales se revierten al finalizar.
+Las acciones opcionales incluyen filtros, edición, cierre perdido, reapertura y eliminación definitiva. Se omiten mediante `pm.execution.skipRequest()` cuando `runOptional=false`. Al habilitarlas, el resultado final de las métricas refleja esos cambios.
+
+Las peticiones de Postman crean datos persistentes. El teléfono de ejemplo debe estar libre de solicitudes abiertas para registrar otro lead; un conflicto devuelve 409. Los intentos de captación consumen el límite por IP, incluso si fallan. Los casos de autenticación ausente esperan 401 y requieren que el servidor tenga su token configurado. Los casos de identificadores inexistentes suponen que los valores de prueba no están presentes en la base de datos. La colección se comparte con el token vacío.

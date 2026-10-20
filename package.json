@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx src/scripts/database.ts migrate",
     "db:seed": "tsx src/scripts/database.ts seed",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

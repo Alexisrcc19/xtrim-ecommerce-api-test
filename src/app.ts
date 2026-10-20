@@ -6,6 +6,7 @@ import { plansRouter } from "./modules/plans/plans.routes.js";
 import { errorHandler } from "./middlewares/errors.js";
 import { rateLimit } from "./middlewares/rate-limit.js";
 import { adminAuth } from "./middlewares/auth.js";
+import { LeadEvents } from "./modules/leads/leads.events.js";
 import { leadsRouter } from "./modules/leads/leads.routes.js";
 import type { LeadsService } from "./modules/leads/leads.service.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
@@ -32,7 +33,9 @@ export function createApp(plans: PlansRepository, commercial?: CommercialModules
   app.use("/api/v1/plans", plansRouter(plans));
   if (commercial) {
     const authenticate = adminAuth(commercial.adminToken ?? process.env.ADMIN_API_TOKEN);
-    app.use("/api/v1/leads", leadsRouter(commercial.leads, authenticate));
+    const events = new LeadEvents();
+    app.once("shutdown", () => events.close());
+    app.use("/api/v1/leads", leadsRouter(commercial.leads, authenticate, events));
     app.use("/api/v1/dashboard", dashboardRouter(commercial.dashboard, authenticate));
   }
   app.use((_req, res) => {

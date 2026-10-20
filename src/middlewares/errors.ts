@@ -11,6 +11,17 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
     res.status(error.status).json({ error: { code: error.code, message: error.message } });
     return;
   }
+  if (
+    typeof error === "object" && error !== null &&
+    "code" in error && error.code === "23505" &&
+    "constraint" in error && error.constraint === "leads_active_phone_unique"
+  ) {
+    res.status(409).json({ error: {
+      code: "ACTIVE_PHONE_EXISTS",
+      message: "Ya existe una solicitud en Nuevo o En gestión con este teléfono",
+    } });
+    return;
+  }
   if (error instanceof SyntaxError && "status" in error && error.status === 400) {
     res.status(400).json({ error: { code: "INVALID_JSON", message: "JSON inválido" } });
     return;

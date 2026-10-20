@@ -1,0 +1,1737 @@
+{
+  "info": {
+    "name": "XTRIM Ecommerce API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Demostración técnica con datos ficticios. Revisada contra rutas reales y docs/openapi.yaml. Ejecute en orden Catálogo → Captación pública → CRM → Dashboard. Configure baseUrl sin barra final (incluye /api/v1) y adminToken solo localmente. planId, planSlug y leadId se capturan automáticamente; evite variables de entorno con esos nombres que oculten las de colección. runOptional=false omite filtros/edición/LOST/reapertura/borrado usando pm.execution.skipRequest(). Una ejecución crea un lead persistente y consume cinco intentos de captación. Requiere catálogo activo y autenticación administrativa configurada. Las respuestas de ejemplo no se inventan: las pruebas comprueban las respuestas reales."
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string",
+      "description": "Token privado local igual al ADMIN_API_TOKEN del backend. No exportar ni compartir su valor."
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string",
+      "description": "Capturado desde GET /plans."
+    },
+    {
+      "key": "leadId",
+      "value": "",
+      "type": "string",
+      "description": "Capturado desde POST /leads."
+    },
+    {
+      "key": "planSlug",
+      "value": "",
+      "type": "string",
+      "description": "Auxiliar capturado desde GET /plans para el detalle."
+    },
+    {
+      "key": "runOptional",
+      "value": "false",
+      "type": "string",
+      "description": "Cambiar a true para habilitar las operaciones opcionales, incluido borrado definitivo."
+    }
+  ],
+  "item": [
+    {
+      "name": "Catálogo",
+      "description": "",
+      "item": [
+        {
+          "name": "00 · Salud de la API",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/health",
+            "description": "Liveness implementada en app.ts. No existe /health/db. No comprueba PostgreSQL por solicitud."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"API disponible\", () => {",
+                  "  pm.expect(pm.response.json()).to.eql({status: \"ok\", service: \"xtrim-ecommerce-api\"});",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "01 · Listar planes y capturar planId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/plans",
+            "description": "Captura el primer plan activo y su slug. Limpia identificadores previos para evitar reutilizarlos si falla una nueva demostración. Requiere seed o catálogo activo."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"planId\", \"\");",
+                  "pm.collectionVariables.set(\"planSlug\", \"\");",
+                  "pm.collectionVariables.set(\"leadId\", \"\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Catálogo activo con al menos un plan\", () => {",
+                  "  const plans = pm.response.json().data;",
+                  "  pm.expect(plans).to.be.an(\"array\").that.is.not.empty;",
+                  "  plans.forEach(plan => {",
+                  "    pm.expect(plan.is_active).to.eql(true);",
+                  "    pm.expect(plan.monthly_price).to.be.a(\"string\");",
+                  "  });",
+                  "  pm.expect(plans[0].id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.collectionVariables.set(\"planId\", plans[0].id);",
+                  "  pm.collectionVariables.set(\"planSlug\", plans[0].slug);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "02 · Detalle del plan seleccionado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/plans/{{planSlug}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"planSlug\")) throw new Error(\"Ejecute primero Listar planes\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Detalle del plan seleccionado\", () => {",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"planId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Errores de catálogo",
+          "description": "",
+          "item": [
+            {
+              "name": "Slug inválido · 400",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/plans/SLUG_INVALIDO",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"INVALID_SLUG\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Plan inexistente · 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/plans/xtrim-demo-plan-que-no-existe",
+                "description": "Supone que este slug de prueba no existe en la base de demostración."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"PLAN_NOT_FOUND\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Captación pública",
+      "description": "",
+      "item": [
+        {
+          "name": "03 · Crear lead público y capturar leadId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/leads",
+            "description": "Crea un registro persistente ficticio sin autenticación. Devuelve solamente id, status y created_at. Cada ejecución crea otro lead; no hay deduplicación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Persona Demo Postman\",\n  \"phone\": \"0991234567\",\n  \"province\": \"Pichincha\",\n  \"plan_id\": \"{{planId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"leadId\", \"\");",
+                  "if (!pm.variables.get(\"planId\")) throw new Error(\"Ejecute primero Listar planes\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Confirmación mínima y estado NEW\", () => {",
+                  "  const lead = pm.response.json().data;",
+                  "  pm.expect(lead).to.have.all.keys(\"id\", \"status\", \"created_at\");",
+                  "  pm.expect(lead.status).to.eql(\"NEW\");",
+                  "  pm.expect(lead.id).to.match(/^[0-9a-f-]{36}$/i);",
+                  "  pm.collectionVariables.set(\"leadId\", lead.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Errores de captación pública",
+          "description": "Estos cuatro intentos también consumen la cuota. Con la creación, una corrida completa consume cinco de los diez intentos por IP cada 15 minutos.",
+          "item": [
+            {
+              "name": "Teléfono inválido · 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/leads",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Persona Demo Postman\",\n  \"phone\": \"123\",\n  \"province\": \"Pichincha\",\n  \"plan_id\": \"{{planId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"planId\")) throw new Error(\"Ejecute primero Listar planes\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Provincia inválida · 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/leads",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Persona Demo Postman\",\n  \"phone\": \"0991234567\",\n  \"province\": \"Provincia inexistente\",\n  \"plan_id\": \"{{planId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"planId\")) throw new Error(\"Ejecute primero Listar planes\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Plan no disponible · 422",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/leads",
+                "description": "UUID válido reservado aquí como ejemplo inexistente; supone que no existe como plan activo.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Persona Demo Postman\",\n  \"phone\": \"0991234567\",\n  \"province\": \"Pichincha\",\n  \"plan_id\": \"00000000-0000-0000-0000-000000000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"PLAN_UNAVAILABLE\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "JSON malformado · 400",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/leads",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"full_name\":",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"INVALID_JSON\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRM",
+      "description": "",
+      "item": [
+        {
+          "name": "04 · Consultar CRM paginado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/leads?page=1&limit=20",
+            "description": "No presupone que el lead recién creado esté en la primera página si hay actividad concurrente; el siguiente detalle lo consulta por UUID."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Listado y paginación\", () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.be.an(\"array\");",
+                  "  pm.expect(body.pagination).to.have.all.keys(\"page\", \"limit\", \"total\", \"total_pages\");",
+                  "  pm.expect(body.pagination.page).to.eql(1);",
+                  "  pm.expect(body.pagination.limit).to.eql(20);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "05 · Consultar el lead creado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/leads/{{leadId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                  "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Corresponde al lead creado\", () => {",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "06 · Cambiar a IN_PROGRESS",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/leads/{{leadId}}/status",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                  "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Corresponde al lead creado\", () => {",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                  "});",
+                  "pm.test(\"Estado y cierre coherentes\", () => {",
+                  "  const lead = pm.response.json().data;",
+                  "  pm.expect(lead.status).to.eql(\"IN_PROGRESS\");",
+                  "  pm.expect(lead.outcome).to.eql(null);",
+                  "  pm.expect(lead.sale_amount).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "07 · Cerrar WON con monto mensual",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/leads/{{leadId}}/status",
+            "description": "Valor mensual vendido de demostración en USD. sale_amount es cadena decimal, no un número JSON. No representa dinero cobrado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"WON\",\n  \"sale_amount\": \"31.25\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                  "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Corresponde al lead creado\", () => {",
+                  "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                  "});",
+                  "pm.test(\"Estado y cierre coherentes\", () => {",
+                  "  const lead = pm.response.json().data;",
+                  "  pm.expect(lead.status).to.eql(\"CLOSED\");",
+                  "  pm.expect(lead.outcome).to.eql(\"WON\");",
+                  "  pm.expect(lead.sale_amount).to.eql(\"31.25\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Errores de CRM",
+          "description": "Los errores de validación no modifican el cierre WON del flujo principal.",
+          "item": [
+            {
+              "name": "Sin autenticación · 401",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "noauth"
+                },
+                "url": "{{baseUrl}}/leads",
+                "description": "Caso negativo deliberado con No Auth. Requiere que ADMIN_API_TOKEN esté configurado correctamente en el backend; de lo contrario responde 503."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHORIZED\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});",
+                      "pm.test(\"Desafío Bearer\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.eql(\"Bearer\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "UUID inválido · 400",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/uuid-invalido",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Lead inexistente · 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/00000000-0000-0000-0000-000000000000",
+                "description": "Supone que este UUID de prueba no está asignado a un lead."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"LEAD_NOT_FOUND\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Paginación inválida · 400",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads?limit=101",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cierre sin resultado · 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CLOSED\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "WON sin monto · 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"WON\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "LOST con monto · 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"LOST\",\n  \"sale_amount\": \"1.00\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Monto numérico en vez de cadena · 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"WON\",\n  \"sale_amount\": 31.25\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Edición vacía · 400",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"VALIDATION_ERROR\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Opcionales · filtros, edición, LOST, reapertura y eliminación",
+          "description": "Se omite por defecto. Establezca runOptional=true para ejecutar. El borrado es definitivo y el cierre LOST/reapertura cambian las métricas. Si ejecuta toda la colección con esta opción, el dashboard final reflejará la eliminación, no el cierre WON.",
+          "item": [
+            {
+              "name": "Filtrar y buscar oportunidades",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads?page=1&limit=10&search=Persona&status=CLOSED&province=Pichincha",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"Filtros aplicados\", () => {",
+                      "  pm.response.json().data.forEach(lead => {",
+                      "    pm.expect(lead.status).to.eql(\"CLOSED\");",
+                      "    pm.expect(lead.province).to.eql(\"Pichincha\");",
+                      "    pm.expect(lead.full_name.toLowerCase()).to.include(\"persona\");",
+                      "  });",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Editar datos del lead",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}",
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"full_name\": \"Persona Demo Editada\",\n  \"phone\": \"+593 99 123 4567\",\n  \"province\": \"guayas\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"Corresponde al lead creado\", () => {",
+                      "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                      "});",
+                      "pm.test(\"Datos normalizados\", () => {",
+                      "  pm.expect(pm.response.json().data.phone).to.eql(\"+593991234567\");",
+                      "  pm.expect(pm.response.json().data.province).to.eql(\"Guayas\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cerrar como LOST sin monto",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "Sustituye el cierre WON del lead seleccionado y lo excluye del KPI de ventas.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"CLOSED\",\n  \"outcome\": \"LOST\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"Corresponde al lead creado\", () => {",
+                      "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                      "});",
+                      "pm.test(\"Estado y cierre coherentes\", () => {",
+                      "  const lead = pm.response.json().data;",
+                      "  pm.expect(lead.status).to.eql(\"CLOSED\");",
+                      "  pm.expect(lead.outcome).to.eql(\"LOST\");",
+                      "  pm.expect(lead.sale_amount).to.eql(null);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reabrir como NEW",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}/status",
+                "description": "Limpia outcome y sale_amount automáticamente.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"NEW\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"Corresponde al lead creado\", () => {",
+                      "  pm.expect(pm.response.json().data.id).to.eql(pm.variables.get(\"leadId\"));",
+                      "});",
+                      "pm.test(\"Estado y cierre coherentes\", () => {",
+                      "  const lead = pm.response.json().data;",
+                      "  pm.expect(lead.status).to.eql(\"NEW\");",
+                      "  pm.expect(lead.outcome).to.eql(null);",
+                      "  pm.expect(lead.sale_amount).to.eql(null);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Eliminar definitivamente el lead",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}",
+                "description": "Borrado físico del leadId seleccionado. También lo elimina de las métricas. Conserva leadId para comprobar el 404 siguiente."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));",
+                      "pm.test(\"Sin cuerpo\", () => pm.expect(pm.response.text()).to.eql(\"\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Comprobar eliminación · 404",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{adminToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "url": "{{baseUrl}}/leads/{{leadId}}",
+                "description": ""
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");",
+                      "if (!pm.variables.get(\"leadId\")) throw new Error(\"Ejecute primero Crear lead\");"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                      "pm.test(\"Error controlado\", () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql(\"LEAD_NOT_FOUND\");",
+                      "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get(\"runOptional\") !== \"true\") {",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "description": "",
+      "item": [
+        {
+          "name": "08 · Consultar indicadores comerciales",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/dashboard/metrics",
+            "description": "Métricas globales reales. No se espera un total exacto porque puede haber otros leads. Suma montos mensuales históricos de CLOSED + WON; no ingresos cobrados."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get(\"adminToken\")) throw new Error(\"Configure adminToken localmente antes de ejecutar el CRM\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Indicadores y moneda\", () => {",
+                  "  const metrics = pm.response.json().data;",
+                  "  pm.expect(metrics).to.have.all.keys(\"total_leads\", \"leads_by_status\", \"won_sales\", \"monthly_sales_usd\", \"currency\");",
+                  "  pm.expect(metrics.currency).to.eql(\"USD\");",
+                  "  pm.expect(metrics.monthly_sales_usd).to.be.a(\"string\").and.match(/^\\d+\\.\\d{2}$/);",
+                  "  pm.expect(metrics.leads_by_status).to.have.all.keys(\"NEW\", \"IN_PROGRESS\", \"CLOSED\");",
+                  "  const byStatus = metrics.leads_by_status;",
+                  "  [metrics.total_leads, byStatus.NEW, byStatus.IN_PROGRESS, byStatus.CLOSED, metrics.won_sales].forEach(value => {",
+                  "    pm.expect(value).to.be.a(\"number\");",
+                  "    pm.expect(Number.isInteger(value) && value >= 0).to.eql(true);",
+                  "  });",
+                  "  pm.expect(byStatus.NEW + byStatus.IN_PROGRESS + byStatus.CLOSED).to.eql(metrics.total_leads);",
+                  "  pm.expect(metrics.won_sales).to.be.at.most(byStatus.CLOSED);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Dashboard sin autenticación · 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/dashboard/metrics",
+            "description": "Caso negativo deliberado con No Auth. Requiere ADMIN_API_TOKEN válido configurado en el servidor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));",
+                  "pm.test(\"Error controlado\", () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql(\"UNAUTHORIZED\");",
+                  "  pm.expect(pm.response.json().error.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

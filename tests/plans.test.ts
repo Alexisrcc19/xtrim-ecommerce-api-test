@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
@@ -59,7 +60,7 @@ test("PostgreSQL: catálogo, detalle y restricciones de cierre/FK", { skip: proc
     });
     const insert = (status: string, outcome: string | null, amount: string | null, planId = id) =>
       client.query(`INSERT INTO leads (full_name, phone, province, plan_id, status, outcome, sale_amount)
-        VALUES ('Demo Test', '0991234567', 'Pichincha', $1, $2, $3, $4)`, [planId, status, outcome, amount]);
+        VALUES ('Demo Test', $5, 'Pichincha', $1, $2, $3, $4)`, [planId, status, outcome, amount, `09${String(randomInt(100000000)).padStart(8, '0')}`]);
     await insert("NEW", null, null);
     await insert("IN_PROGRESS", null, null);
     await insert("CLOSED", "LOST", null);

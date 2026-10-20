@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, randomInt } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { Pool } from "pg";
 import { createApp } from "../src/app.js";
@@ -129,7 +129,7 @@ test("PostgreSQL HTTP: captación → CRUD → estados → métricas reales", { 
       };
       const before = await metrics();
       const name = `Demo ${randomBytes(8).toString("hex").replace(/[0-9]/g, "a")}`;
-      const payload = { ...valid, full_name: name, plan_id: planId };
+      const payload = { ...valid, full_name: name, phone: `09${String(randomInt(100000000)).padStart(8, "0")}`, plan_id: planId };
       const created = await call("/leads", "POST", payload, false);
       assert.equal(created.status, 201);
       const { data: confirmation } = await created.json() as { data: { id: string; status: string; created_at: string } };
@@ -152,9 +152,9 @@ test("PostgreSQL HTTP: captación → CRUD → estados → métricas reales", { 
       assert.deepEqual(empty.data, []);
       assert.equal(empty.pagination.total, 1);
       assert.equal((await call(`/leads?search=${encodeURIComponent("' OR 1=1 --")}`)).status, 200);
-      assert.equal((await call(leadPath, "PATCH", { phone: "+593 99 123 4567", province: "guayas" })).status, 200);
+      assert.equal((await call(leadPath, "PATCH", { phone: "+593 " + payload.phone.slice(1), province: "guayas" })).status, 200);
       const detail = await (await call(leadPath)).json() as { data: { phone: string; province: string } };
-      assert.equal(detail.data.phone, "+593991234567");
+      assert.equal(detail.data.phone, "+593" + payload.phone.slice(1));
       assert.equal(detail.data.province, "Guayas");
       assert.equal((await call(leadPath, "PATCH", { status: "CLOSED" })).status, 400);
       assert.equal((await call(leadPath, "PATCH", { plan_id: randomUUID() })).status, 422);
@@ -171,7 +171,7 @@ test("PostgreSQL HTTP: captación → CRUD → estados → métricas reales", { 
       const wonListResponse = await call(`/leads?search=${encodeURIComponent(name)}`);
       const wonList = await wonListResponse.json() as { data: { sale_amount: string | null }[] };
       assert.equal(wonList.data[0]!.sale_amount, "31.25");
-      const secondResponse = await call("/leads", "POST", { ...payload, full_name: name + " Segundo" }, false);
+      const secondResponse = await call("/leads", "POST", { ...payload, phone: `09${String(randomInt(100000000)).padStart(8, "0")}`, full_name: name + " Segundo" }, false);
       assert.equal(secondResponse.status, 201);
       const second = await secondResponse.json() as { data: { id: string } };
       const secondPath = `/leads/${second.data.id}`;
