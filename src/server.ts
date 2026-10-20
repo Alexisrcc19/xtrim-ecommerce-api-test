@@ -2,6 +2,9 @@ import "dotenv/config";
 import { createApp } from "./app.js";
 import { createPool } from "./config/database.js";
 import { PlansRepository } from "./modules/plans/plans.repository.js";
+import { LeadsRepository } from "./modules/leads/leads.repository.js";
+import { LeadsService } from "./modules/leads/leads.service.js";
+import { DashboardRepository } from "./modules/dashboard/dashboard.repository.js";
 
 async function start(): Promise<void> {
   const pool = createPool();
@@ -12,7 +15,10 @@ async function start(): Promise<void> {
     throw new Error("No se pudo conectar a PostgreSQL");
   }
   const port = Number(process.env.PORT ?? 4000);
-  const server = createApp(new PlansRepository(pool)).listen(port, () => {
+  const server = createApp(new PlansRepository(pool), {
+    leads: new LeadsService(new LeadsRepository(pool)),
+    dashboard: new DashboardRepository(pool),
+  }).listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
   });
   const shutdown = () => {

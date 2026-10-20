@@ -15,6 +15,10 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
     res.status(400).json({ error: { code: "INVALID_JSON", message: "JSON inválido" } });
     return;
   }
+  if (typeof error === "object" && error !== null && "type" in error && error.type === "entity.too.large") {
+    res.status(413).json({ error: { code: "BODY_TOO_LARGE", message: "Solicitud demasiado grande" } });
+    return;
+  }
   console.error("Error interno al procesar la solicitud");
   res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Error interno del servidor" } });
 };
