@@ -23,7 +23,7 @@ async function serve(db: Pick<Pool, "query">) {
   };
 }
 
-test("conflicto de teléfono devuelve 409 controlado para creación, edición y reapertura", async () => {
+test("conflicto de teléfono devuelve 409 controlado para creación y edición", async () => {
   const id = randomUUID();
   const db = { query: (async (sql: string) => {
     if (sql.trim().startsWith("SELECT")) return { rows: [{ id }] };
@@ -34,7 +34,6 @@ test("conflicto de teléfono devuelve 409 controlado para creación, edición y 
     for (const [method, path, body] of [
       ["POST", "", { full_name: "Demo Unicidad", phone: phone(), province: "Pichincha", plan_id: randomUUID() }],
       ["PATCH", `/${id}`, { phone: phone() }],
-      ["PATCH", `/${id}/status`, { status: "NEW" }],
     ] as const) {
       const response = await fetch(api.base + path, { method, headers, body: JSON.stringify(body) });
       assert.equal(response.status, 409);
@@ -80,8 +79,9 @@ test("PostgreSQL: unicidad activa atómica, formatos equivalentes y nueva solici
     assert.equal((await call(`/${third}`, "PATCH", { phone: "+593" + input.phone.slice(1) })).status, 409);
     // A record can retain its own phone when editing other fields.
     assert.equal((await call(`/${second}`, "PATCH", { phone: input.phone, province: "Guayas" })).status, 200);
+    assert.equal((await call(`/${second}/status`, "PATCH", { status: "IN_PROGRESS" })).status, 200);
     assert.equal((await call(`/${second}/status`, "PATCH", { status: "CLOSED", outcome: "WON", sale_amount: "10.00" })).status, 200);
-    assert.equal((await call(`/${first}/status`, "PATCH", { status: "NEW" })).status, 200);
+    assert.equal((await call(`/${first}/status`, "PATCH", { status: "NEW" })).status, 409);
     assert.equal((await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM leads WHERE plan_id=$1", [planId])).rows[0]!.count, 3);
   } finally {
     await api?.close();

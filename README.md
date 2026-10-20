@@ -93,7 +93,7 @@ Una solicitud válida devuelve HTTP 201 con `id`, `status: "NEW"` y `created_at`
 
 La API valida el nombre, el formato ecuatoriano de teléfono, las 24 provincias y el UUID del plan. Normaliza espacios, formato telefónico y nombre de provincia. Un plan inexistente o inactivo devuelve HTTP 422 (`PLAN_UNAVAILABLE`).
 
-Un teléfono solo puede tener una solicitud en `NEW` o `IN_PROGRESS`. Los formatos local y `+593` se consideran equivalentes. Un duplicado devuelve HTTP 409 (`ACTIVE_PHONE_EXISTS`), también al editar o reabrir una oportunidad. Una solicitud cerrada permite registrar otra con el mismo teléfono.
+Un teléfono solo puede tener una solicitud en `NEW` o `IN_PROGRESS`. Los formatos local y `+593` se consideran equivalentes. Un duplicado devuelve HTTP 409 (`ACTIVE_PHONE_EXISTS`), también al editar una oportunidad. Una solicitud cerrada permite registrar otra con el mismo teléfono.
 
 La captación admite 10 intentos por IP cada 15 minutos, incluidos los intentos inválidos. Al superar el límite responde HTTP 429 con `Retry-After`. El cuerpo máximo es de 100 KB; un tamaño superior devuelve 413 y un JSON malformado devuelve 400. Los contadores son locales a cada proceso, se reinician con la API y admiten hasta 10000 IP activas; al alcanzar esa capacidad, nuevas IP reciben 429 hasta liberar entradas.
 
@@ -132,9 +132,9 @@ Ejemplos de cuerpo para `PATCH /leads/:id/status`:
 {"status":"CLOSED","outcome":"LOST"}
 ```
 
-Un cierre ganado requiere un monto mensual no negativo, como cadena decimal, hasta `99999999.99`. Un cierre perdido no admite monto. Al reabrir una oportunidad se eliminan el resultado y el monto del cierre. Cambiar el plan no altera el monto histórico de una venta.
+Un cierre ganado requiere un monto mensual no negativo, como cadena decimal, hasta `99999999.99`. Un cierre perdido no admite monto. El flujo permitido es `NEW → IN_PROGRESS → CLOSED`. Un cierre es definitivo: no se puede reabrir ni cambiar su resultado o monto. Las transiciones inválidas, repetidas u obsoletas devuelven HTTP 409 (`INVALID_STATUS_TRANSITION`). Cambiar el plan no altera el monto histórico de una venta.
 
-La eliminación es física y retira la oportunidad de los listados y métricas. Las actualizaciones concurrentes conservan la última escritura confirmada; no hay historial de cambios.
+La eliminación es física y retira la oportunidad de los listados y métricas. Los cambios de estado comprueban el estado actual también al escribir, evitando que dos solicitudes avancen desde la misma versión. No hay historial de cambios.
 
 ## Indicadores de ventas
 
@@ -146,7 +146,7 @@ La eliminación es física y retira la oportunidad de los listados y métricas. 
 - `monthly_sales_usd`: suma de sus montos mensuales históricos.
 - `currency`: `USD`.
 
-El indicador mide valor mensual vendido, no dinero cobrado. Los cierres perdidos y las oportunidades abiertas no aportan ventas. Reabrir, cambiar el resultado o eliminar una oportunidad modifica las métricas actuales; cambiar el precio del catálogo no modifica sus montos históricos.
+El indicador mide valor mensual vendido, no dinero cobrado. Los cierres perdidos y las oportunidades abiertas no aportan ventas. Eliminar una oportunidad modifica las métricas actuales; cambiar el precio del catálogo no modifica sus montos históricos.
 
 ## Avisos en tiempo real
 
@@ -187,6 +187,6 @@ Importe [la colección v2.1](docs/postman/xtrim-ecommerce-api.postman_collection
 
 Ejecute las peticiones numeradas `00` a `08` en orden: salud, catálogo, detalle, captación, consulta del CRM, gestión, cierre ganado y métricas. Los scripts comprueban los códigos HTTP y capturan los identificadores automáticamente. Las variables de entorno o globales con los mismos nombres pueden ocultar los identificadores de la colección.
 
-Las acciones opcionales incluyen filtros, edición, cierre perdido, reapertura y eliminación definitiva. Se omiten mediante `pm.execution.skipRequest()` cuando `runOptional=false`. Al habilitarlas, el resultado final de las métricas refleja esos cambios.
+Las acciones opcionales incluyen filtros, edición, intentos rechazados de modificar o reabrir un cierre y eliminación definitiva. Se omiten mediante `pm.execution.skipRequest()` cuando `runOptional=false`. Al habilitarlas, el resultado final de las métricas refleja esos cambios.
 
 Las peticiones de Postman crean datos persistentes. El teléfono de ejemplo debe estar libre de solicitudes abiertas para registrar otro lead; un conflicto devuelve 409. Los intentos de captación consumen el límite por IP, incluso si fallan. Los casos de autenticación ausente esperan 401 y requieren que el servidor tenga su token configurado. Los casos de identificadores inexistentes suponen que los valores de prueba no están presentes en la base de datos. La colección se comparte con el token vacío.
