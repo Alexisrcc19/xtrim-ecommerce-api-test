@@ -164,7 +164,7 @@ pnpm build
 pnpm test
 ```
 
-Para incluir las pruebas de integración con PostgreSQL, con las migraciones aplicadas:
+El backend no tiene script `lint`. Para incluir las pruebas de integración se requiere una base PostgreSQL aislada y migrada. Nunca se debe utilizar la base de producción; las transacciones de prueba no sustituyen el aislamiento. Se configura `DATABASE_URL` exclusivamente con la conexión de pruebas antes de ejecutar migraciones y pruebas:
 
 ```sh
 DATABASE_TESTS=1 pnpm test
@@ -174,7 +174,7 @@ Las pruebas cubren catálogo, captación, validaciones, autenticación, gestión
 
 ## Postman
 
-Importe [la colección v2.1](docs/postman/xtrim-ecommerce-api.postman_collection.json) con **Import → Files** en Postman y configure sus variables:
+Descargue [la colección Postman v2.1 en JSON](docs/postman/xtrim-ecommerce-api.postman_collection.json) desde GitHub con **Download raw file**. El archivo está listo para importar mediante **Import → Files** en Postman. Después de importarlo, configure sus variables:
 
 | Variable | Uso |
 | --- | --- |
@@ -190,3 +190,22 @@ Ejecute las peticiones numeradas `00` a `08` en orden: salud, catálogo, detalle
 Las acciones opcionales incluyen filtros, edición, intentos rechazados de modificar o reabrir un cierre y eliminación definitiva. Se omiten mediante `pm.execution.skipRequest()` cuando `runOptional=false`. Al habilitarlas, el resultado final de las métricas refleja esos cambios.
 
 Las peticiones de Postman crean datos persistentes. El teléfono de ejemplo debe estar libre de solicitudes abiertas para registrar otro lead; un conflicto devuelve 409. Los intentos de captación consumen el límite por IP, incluso si fallan. Los casos de autenticación ausente esperan 401 y requieren que el servidor tenga su token configurado. Los casos de identificadores inexistentes suponen que los valores de prueba no están presentes en la base de datos. La colección se comparte con el token vacío.
+
+
+## Entrega y documentación
+
+- [Repositorio backend](https://github.com/Alexisrcc19/xtrim-ecommerce-api-test).
+- [Repositorio frontend](https://github.com/Alexisrcc19/xtrim-ecommerce-web-test).
+- [Sitio en Vercel](https://xtrim-ecommerce-web-test.vercel.app).
+- [CRM](https://xtrim-ecommerce-web-test.vercel.app/admin/login): usuario `admin`; contraseña entregada por un canal privado.
+- [API en Render: health check](https://xtrim-ecommerce-api-test.onrender.com/api/v1/health).
+- [Caso práctico: diagnóstico y escalabilidad](docs/caso-practico.md).
+- [Contrato OpenAPI](docs/openapi.yaml) y [colección Postman](docs/postman/xtrim-ecommerce-api.postman_collection.json).
+
+## Arquitectura y despliegue
+
+El navegador utiliza Next.js en Vercel y la API Express en Render. El CRM pasa por el servidor de Next.js para validar su sesión y añadir el token administrativo privado. Express aplica las reglas comerciales y consulta PostgreSQL en Neon mediante `pg`; Next.js no implementa persistencia.
+
+En Render se vincula este repositorio, con comando de build `pnpm install --frozen-lockfile && pnpm build` y arranque `pnpm start`. Se configuran `DATABASE_URL` de Neon, `ADMIN_API_TOKEN`, `FRONTEND_URL=https://xtrim-ecommerce-web-test.vercel.app` y el puerto asignado por el servicio. `TRUST_PROXY_HOPS` debe corresponder a la topología real del proxy. Las migraciones se aplican de forma controlada con `pnpm db:migrate`; el seed de demostración se ejecuta con `pnpm db:seed` cuando corresponda, nunca como parte de las pruebas de producción.
+
+El health check de Render usa `/api/v1/health`: comprueba el proceso, sin certificar lecturas o escrituras de PostgreSQL. La disponibilidad del catálogo se verifica por separado con `GET /api/v1/plans`. Los secretos se configuran en los servicios de alojamiento y no se incluyen en el repositorio.
